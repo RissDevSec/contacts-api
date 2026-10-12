@@ -1,29 +1,30 @@
-import { z, ZodType } from "zod";
+import { z } from "zod";
+import { idSchema } from "./common.validation";
 
 export class addressValidation {
-  static create: ZodType = z.object({
+  static create = z.object({
     street: z.string().min(4).max(100).optional(),
     city: z.string().min(4).max(100).optional(),
     province: z.string().min(4).max(100).optional(),
     country: z.string().min(4).max(100),
     postalCode: z.string().min(4).max(10),
-    contactId: z.number().positive().min(1),
+    contactId: idSchema,
   });
 
-  static get: ZodType = z.object({
-    id: z.number().positive().min(1),
-    contactId: z.number().positive().min(1),
+  static get = z.object({
+    id: idSchema,
+    contactId: idSchema,
   });
 
-  static update: ZodType = z.object({
-    id: z.number().positive().min(1),
+  static update = z.object({
+    id: idSchema,
     street: z.string().min(4).max(100).optional(),
     city: z.string().min(4).max(100).optional(),
     province: z.string().min(4).max(100).optional(),
     country: z.string().min(4).max(100).optional(),
     postalCode: z.string().min(4).max(10).optional(),
-    contactId: z.number().positive().min(1),
+    contactId: idSchema,
   });
 
-  static list: ZodType = z.number().positive().min(1)
+  static list = idSchema
 }

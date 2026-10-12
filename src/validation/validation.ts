@@ -1,7 +1,10 @@
-import { ZodType } from "zod";
+import { z } from "zod";
 
 export class Validation {
-  static async validate<T>(schema: ZodType, data: T): Promise<T>{
-    return await schema.parse(data)
+  static async validate<S extends z.ZodType>(
+    schema: S,
+    data: unknown
+  ): Promise<z.output<S>> {
+    return await schema.parseAsync(data);
   }
 }

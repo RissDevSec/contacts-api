@@ -1,14 +1,11 @@
-import { users } from "@prisma/client";
-import { tokenAndRefresh } from "../utils/token.util";
+import { addresses, contacts, users } from "@prisma/client";
+import { tokenAndRefresh } from "./token.util";
 import { userResponse } from "../models/user.model";
-import { contacts } from "@prisma/client";
 import { contactResponse } from "../models/contact.model";
-import { addresses } from "@prisma/client";
-import  { addressResponse } from "../models/address.model";
-import { dataAddress } from "../models/address.model";
+import { addressResponse, dataAddress } from "../models/address.model";
 
 export function toUserResponse(
-  user: users,
+  user: Pick<users, "username" | "name">,
   token?: tokenAndRefresh
 ): userResponse {
   return {

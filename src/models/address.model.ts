@@ -1,6 +1,3 @@
-import { addresses } from "@prisma/client";
-import { tokenAndRefresh } from "../utils/token.util";
-
 export type addressRequest = {
   street?: string;
   city?: string;

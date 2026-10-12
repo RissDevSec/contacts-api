@@ -1,4 +1,4 @@
-import { addresses, Prisma } from "@prisma/client";
+import { addresses } from "@prisma/client";
 import {
   addressRequest,
   addressResponse,
@@ -9,10 +9,11 @@ import { toAddressResponse } from "../utils/response.util";
 import { Validation } from "../validation/validation";
 import { addressValidation } from "../validation/address.validation";
 import { prismaClient, redis } from "../app/database";
-import { responseError } from "../utils/Error.util";
+import { ResponseError } from "../utils/Error.util";
 import { tokenAndRefresh } from "../utils/token.util";
+import { cacheKey } from "../utils/cache.util";
 
-export class addressService {
+export class AddressService {
   static async checkContact(
     user: tokenAndRefresh,
     contactId: number
@@ -24,7 +25,7 @@ export class addressService {
       },
     });
     if (data == null) {
-      throw new responseError("contact is not found", 404);
+      throw new ResponseError("Contact not found", 404);
     }
   }
 
@@ -37,7 +38,7 @@ export class addressService {
     });
 
     if (data == null) {
-      throw new responseError("address is not found", 404);
+      throw new ResponseError("Address not found", 404);
     }
 
     return data;
@@ -54,7 +55,7 @@ export class addressService {
       data,
     });
 
-    await redis.del(user.username + data.contactId.toString() + "list");
+    await redis.del(cacheKey.addressList(user.username, data.contactId));
     return toAddressResponse(createAddress, user);
   }
 
@@ -69,16 +70,16 @@ export class addressService {
     });
 
     const getData = await redis.get(
-      user.username + contactId.toString() + id.toString()
+      cacheKey.address(user.username, contactId, id)
     );
     let dataCache;
     if (getData) {
       dataCache = JSON.parse(getData);
     } else {
       await this.checkContact(user, data.contactId);
-      dataCache = await this.checkAddress(contactId, id);
+      dataCache = await this.checkAddress(data.contactId, data.id);
       await redis.setex(
-        user.username + contactId.toString() + id.toString(),
+        cacheKey.address(user.username, data.contactId, data.id),
         3600,
         JSON.stringify(dataCache)
       );
@@ -104,9 +105,9 @@ export class addressService {
     });
 
     await redis.del(
-      user.username + data.contactId.toString() + data.id.toString()
+      cacheKey.address(user.username, data.contactId, data.id)
     );
-    await redis.del(user.username + data.contactId.toString() + "list");
+    await redis.del(cacheKey.addressList(user.username, data.contactId));
     return toAddressResponse(updateAddress, user);
   }
 
@@ -120,36 +121,32 @@ export class addressService {
       contactId,
     });
     await this.checkContact(user, data.contactId);
-    await this.checkAddress(contactId, id);
+    await this.checkAddress(data.contactId, data.id);
     await prismaClient.addresses.delete({
       where: {
-        id,
-        contactId,
+        id: data.id,
+        contactId: data.contactId,
       },
     });
-    await redis.del(
-      user.username + contactId.toString() + id.toString()
-    );
-    await redis.del(user.username + contactId.toString() + "list");
+    await redis.del(cacheKey.address(user.username, contactId, id));
+    await redis.del(cacheKey.addressList(user.username, contactId));
   }
 
   static async list(
     user: tokenAndRefresh,
     contactId: number
   ): Promise<addressResponse<Array<dataAddress>>> {
-    const data = await Validation.validate(addressValidation.list, contactId);
+    const id = await Validation.validate(addressValidation.list, contactId);
 
-    const getData = await redis.get(
-      user.username + contactId.toString() + "list"
-    );
+    const getData = await redis.get(cacheKey.addressList(user.username, id));
     let dataCache;
     if (getData) {
       dataCache = JSON.parse(getData);
     } else {
-      await this.checkContact(user, data);
+      await this.checkContact(user, id);
       dataCache = await prismaClient.addresses.findMany({
         where: {
-          contactId: data,
+          contactId: id,
         },
         select: {
           id: true,
@@ -162,7 +159,7 @@ export class addressService {
       });
 
       await redis.setex(
-        user.username + contactId.toString() + "list",
+        cacheKey.addressList(user.username, id),
         3600,
         JSON.stringify(dataCache)
       );

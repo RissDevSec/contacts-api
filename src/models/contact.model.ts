@@ -1,5 +1,3 @@
-
-
 export type dataContact = {
   id: number;
   firstName: string;
@@ -19,7 +17,6 @@ export type contactResponse = {
   data: dataContact;
   newAccessToken?: string;
 };
-
 
 export type updateContactRequest = {
   id: number;
@@ -43,8 +40,8 @@ export type paging = {
   currentPage: number;
 };
 
-export type pageabel<T> = {
+export type pageable<T> = {
   data: Array<T>;
   paging: paging;
-  newAccessToken: string;
+  newAccessToken?: string;
 };

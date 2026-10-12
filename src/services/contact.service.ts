@@ -10,11 +10,12 @@ import { toContactResponse } from "../utils/response.util";
 import { Validation } from "../validation/validation";
 import { contactValidation } from "../validation/contact.validation";
 import { prismaClient, redis } from "../app/database";
-import { responseError } from "../utils/Error.util";
-import { pageabel } from "../models/contact.model";
+import { ResponseError } from "../utils/Error.util";
+import { pageable } from "../models/contact.model";
 import { tokenAndRefresh } from "../utils/token.util";
+import { cacheKey } from "../utils/cache.util";
 
-export class contactService {
+export class ContactService {
   static async create(
     user: tokenAndRefresh,
     req: contactRequest
@@ -38,7 +39,7 @@ export class contactService {
     });
 
     if (data == null) {
-      throw new responseError("contact is not found", 404);
+      throw new ResponseError("Contact not found", 404);
     }
     return data;
   }
@@ -48,14 +49,14 @@ export class contactService {
     id: number
   ): Promise<contactResponse> {
     id = await Validation.validate(contactValidation.get, id);
-    const getData = await redis.get(user.username + id.toString());
+    const getData = await redis.get(cacheKey.contact(user.username, id));
     let data;
     if (getData) {
       data = JSON.parse(getData);
     } else {
       data = await this.checkDatabase(user.username, id);
       await redis.setex(
-        user.username + id.toString(),
+        cacheKey.contact(user.username, id),
         3600,
         JSON.stringify(data)
       );
@@ -80,7 +81,7 @@ export class contactService {
       data,
     });
 
-    await redis.del(user.username + req.id.toString())
+    await redis.del(cacheKey.contact(user.username, data.id));
     return toContactResponse(update, user);
   }
 
@@ -100,13 +101,13 @@ export class contactService {
         id,
       },
     });
-    await redis.del(user.username + id.toString());
+    await redis.del(cacheKey.contact(user.username, id));
   }
 
   static async search(
     user: tokenAndRefresh,
     req: searchContact
-  ): Promise<pageabel<dataContact>> {
+  ): Promise<pageable<dataContact>> {
     const data = await Validation.validate(contactValidation.search, req);
     const skip = (data.page - 1) * data.size;
 
@@ -147,8 +148,9 @@ export class contactService {
     const contacts = await prismaClient.contacts.findMany({
       where: {
         username: user.username,
-        AND: filters,
+        AND: filters.length > 0 ? filters : undefined,
       },
+      orderBy: { id: "asc" },
       take: data.size,
       skip: skip,
       select: {
@@ -163,7 +165,7 @@ export class contactService {
     const total = await prismaClient.contacts.count({
       where: {
         username: user.username,
-        AND: filters,
+        AND: filters.length > 0 ? filters : undefined,
       },
     });
 
@@ -174,7 +176,7 @@ export class contactService {
         totalPage: Math.ceil(total / data.size),
         size: data.size,
       },
-      newAccessToken: user.newAccessToken as string,
+      newAccessToken: user.newAccessToken,
     };
   }
 }

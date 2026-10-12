@@ -21,7 +21,6 @@ export type userResponse = {
   refreshToken?: string;
 };
 
-
 export type updateUserRequest = {
   name?: string;
   password?: string;

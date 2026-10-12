@@ -9,12 +9,11 @@ import { toUserResponse } from "../utils/response.util";
 import { userValidation } from "../validation/user.validation";
 import { Validation } from "../validation/validation";
 import bcrypt from "bcrypt";
-import { responseError } from "../utils/Error.util";
+import { ResponseError } from "../utils/Error.util";
 import jwt from "jsonwebtoken";
-import dotenv from "dotenv";
 import { users } from "@prisma/client";
 import { tokenAndRefresh } from "../utils/token.util";
-dotenv.config();
+import { cacheKey } from "../utils/cache.util";
 
 export class UserService {
   static async register(request: createUserRequest): Promise<userResponse> {
@@ -28,8 +27,8 @@ export class UserService {
       },
     });
 
-    if (userUsed != 0) {
-      throw new responseError("username is already use", 404);
+    if (userUsed > 0) {
+      throw new ResponseError("Username already exists", 409);
     }
 
     registerRequest.password = await bcrypt.hash(registerRequest.password, 10);
@@ -54,7 +53,7 @@ export class UserService {
     });
 
     if (!exist) {
-      throw new responseError("username is wrong", 404);
+      throw new ResponseError("Invalid credentials", 401);
     }
 
     const password = await bcrypt.compare(
@@ -63,7 +62,7 @@ export class UserService {
     );
 
     if (!password) {
-      throw new responseError("password is wrong", 404);
+      throw new ResponseError("Invalid credentials", 401);
     }
 
     let refreshToken;
@@ -88,9 +87,7 @@ export class UserService {
     const accessToken = jwt.sign(
       { username: exist.username },
       process.env.SECRET_KEY as string,
-      {
-        expiresIn: "1h",
-      }
+      { expiresIn: "1h" }
     );
 
     const response = toUserResponse(exist);
@@ -100,19 +97,25 @@ export class UserService {
   }
 
   static async get(user: tokenAndRefresh): Promise<userResponse> {
-    const getData = await redis.get(user.username)
-    let data;
+    const key = cacheKey.user(user.username);
+    const getData = await redis.get(key);
+    let data: Pick<users, "username" | "name">;
     if (getData) {
-      data = JSON.parse(getData)
+      data = JSON.parse(getData);
     } else {
-      data = await prismaClient.users.findUnique({
+      const found = await prismaClient.users.findUnique({
         where: {
           username: user.username,
         },
       });
-      await redis.setex(user.username, 3600, JSON.stringify(data));
+      if (!found) {
+        throw new ResponseError("User not found", 404);
+      }
+      // Only cache public fields: never the password hash or refresh token.
+      data = { username: found.username, name: found.name };
+      await redis.setex(key, 3600, JSON.stringify(data));
     }
-    return toUserResponse(data as users, user);
+    return toUserResponse(data, user);
   }
 
   static async update(
@@ -132,7 +135,7 @@ export class UserService {
       data,
     });
 
-    await redis.del(user.username)
+    await redis.del(cacheKey.user(user.username));
 
     return toUserResponse(updateUser, user);
   }

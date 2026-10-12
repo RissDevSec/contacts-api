@@ -1,7 +1,9 @@
 node_modules
-# Keep environment variables out of version control
+# Keep environment variables out of version control (but commit the template)
 .env
-tests
-ddd.mjs
+.env.test
+!.env.example
 dist
+coverage
+ddd.mjs
 redis.conf

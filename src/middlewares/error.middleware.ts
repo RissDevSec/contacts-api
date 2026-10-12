@@ -1,6 +1,8 @@
 import { NextFunction, Request, Response } from "express";
 import { ZodError } from "zod";
-import { responseError } from "../utils/Error.util";
+import { ResponseError } from "../utils/Error.util";
+
+type BodyParserError = Error & { type?: string };
 
 export const errorMiddleware = (
   error: Error,
@@ -9,17 +11,25 @@ export const errorMiddleware = (
   next: NextFunction
 ) => {
   if (error instanceof ZodError) {
-    res.status(404).json({
-      errors: `Validation Error : ${JSON.stringify(error)}`,
+    res.status(400).json({
+      errors: `Validation Error: ${JSON.stringify(error)}`,
     });
-  } else if (error instanceof responseError) {
+    return;
+  }
+  if (error instanceof ResponseError) {
     res.status(error.status).json({
       errors: error.message,
     });
-  } else {
-    console.log(error);
-    res.status(501).json({
-      errors: "server error",
-    });
+    return;
   }
+  if ((error as BodyParserError).type === "entity.parse.failed") {
+    res.status(400).json({ errors: "Invalid JSON body" });
+    return;
+  }
+  if ((error as BodyParserError).type === "entity.too.large") {
+    res.status(413).json({ errors: "Request body is too large" });
+    return;
+  }
+  console.error(error);
+  res.status(500).json({ errors: "InternalServerError" });
 };

@@ -1,66 +1,78 @@
-import { tokenAndRefresh, UserRequest } from "../utils/token.util";
 import { Response, NextFunction } from "express";
-import jwt, { TokenExpiredError } from "jsonwebtoken";
-import dotenv from "dotenv";
+import jwt, { JsonWebTokenError, TokenExpiredError } from "jsonwebtoken";
 import { prismaClient } from "../app/database";
-
-dotenv.config();
+import { tokenAndRefresh, UserRequest } from "../utils/token.util";
 
 export const refreshToken = async (
-  error: Error,
+  error: Error | null,
   req: UserRequest,
   res: Response,
   next: NextFunction
 ): Promise<void> => {
-  if (error instanceof TokenExpiredError) {
-    const refreshToken = req.signedCookies["refreshToken"];
-    if (!refreshToken) {
-      res.status(404).json({ errors: "No refresh token found" });
-    } else {
-      try {
-        const checkToken = await prismaClient.users.findUnique({
-          where: {
-            username: req.user?.username,
-            token: refreshToken,
-          },
-        });
-        if (checkToken == null) {
-          res.status(404).json({ errors: "Unauthorized" });
-        } else {
-          const verifyToken = jwt.verify(
-            refreshToken,
-            process.env.SECRET_KEY_DATABASE as string
-          ) as tokenAndRefresh;
-          if (verifyToken.username !== req.user?.username) {
-            throw new Error();
-          } else {
-            const newAccessToken = jwt.sign(
-              { username: verifyToken.username },
-              process.env.SECRET_KEY as string
-            );
-            req.user.newAccessToken = newAccessToken;
-            next();
-          }
-        }
-      } catch (e) {
-        if (e instanceof TokenExpiredError) {
-          await prismaClient.users.update({
-            where: {
-              username: req.user?.username,
-            },
-            data: {
-              token: null,
-            },
-          });
-          res.status(404).json({ errors: "Unauthorized" });
-        } else {
-          res.status(404).json({ errors: "Unauthorized" });
-        }
-      }
+  // Only an expired access token triggers the refresh flow; anything else is
+  // either a normal request or an error for the central error middleware.
+  if (!(error instanceof TokenExpiredError)) {
+    return error ? next(error) : next();
+  }
+
+  const refreshToken = req.signedCookies["refreshToken"];
+  if (!refreshToken) {
+    res.status(401).json({ errors: "No refresh token found" });
+    return;
+  }
+
+  try {
+    const stored = await prismaClient.users.findUnique({
+      where: {
+        username: req.user?.username,
+        token: refreshToken,
+      },
+    });
+
+    if (!stored) {
+      res.status(401).json({ errors: "Unauthorized" });
+      return;
     }
-  } else if (!error) {
+
+    const verifyToken = jwt.verify(
+      refreshToken,
+      process.env.SECRET_KEY_DATABASE as string
+    ) as tokenAndRefresh;
+
+    if (verifyToken.username !== req.user?.username) {
+      res.status(401).json({ errors: "Unauthorized" });
+      return;
+    }
+
+    req.user!.newAccessToken = jwt.sign(
+      { username: verifyToken.username },
+      process.env.SECRET_KEY as string,
+      { expiresIn: "1h" }
+    );
     next();
-  } else {
-    next(error);
+  } catch (e) {
+    if (e instanceof TokenExpiredError) {
+      // The stored refresh token is dead: revoke it and ask the client to
+      // log in again.
+      await prismaClient.users.update({
+        where: {
+          username: req.user?.username,
+        },
+        data: {
+          token: null,
+        },
+      });
+      res.status(401).json({ errors: "Unauthorized" });
+      return;
+    }
+
+    if (e instanceof JsonWebTokenError) {
+      res.status(401).json({ errors: "Unauthorized" });
+      return;
+    }
+
+    // Any other error (e.g. a database failure) is not an authentication
+    // problem; let the error middleware report it as a 500.
+    next(e as Error);
   }
 };

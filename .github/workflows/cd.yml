@@ -1,0 +1,42 @@
+name: Continuous Deployment
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: SSH and deploy app
+        uses: appleboy/ssh-action@v1.2.5
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          script: |
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+
+            set -e
+
+            cd ~/contacts-api
+            git pull origin main
+
+            npm ci --no-audit --no-fund
+            npm run migrate:generate
+            npm run build
+            npm run migrate
+            npm prune --omit=dev
+
+            pm2 restart contacts-api --update-env || pm2 start npm --name "contacts-api" -- run start
+            pm2 save
+
+      - name: Check the site is up
+        run: curl -fsS --retry 10 --retry-delay 3 --retry-all-errors "${{ vars.SITE_URL }}/ready" > /dev/null

@@ -72,8 +72,10 @@ npm run build
 npm start
 ```
 
-The server runs at `http://localhost:3000`. Health check: `GET /health` (liveness) and
-`GET /ready` (readiness — verifies the database and Redis are actually reachable).
+The server runs on `http://127.0.0.1:3000`, bound to **localhost only** — meant to sit
+behind a reverse proxy (e.g. Nginx) that exposes it to the internet.
+Health check: `GET /health` (liveness) and `GET /ready`
+(readiness — verifies the database and Redis are actually reachable).
 
 ### 🗄️ Existing database
 

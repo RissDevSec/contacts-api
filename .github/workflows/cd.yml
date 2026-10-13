@@ -1,15 +1,24 @@
 name: Continuous Deployment
 
 on:
-  push:
-    branches:
-      - main
+  workflow_run:
+    workflows: ["Continuous Integration"]
+    types: [completed]
+    branches: [main]
 
 permissions:
   contents: read
 
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
 jobs:
   deploy:
+    timeout-minutes: 15
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push'
     runs-on: ubuntu-latest
 
     steps:
@@ -27,7 +36,8 @@ jobs:
             set -e
 
             cd ~/contacts-api
-            git pull origin main
+            git fetch origin main
+            git reset --hard ${{ github.event.workflow_run.head_sha }}
 
             npm ci --no-audit --no-fund
             npm run migrate:generate

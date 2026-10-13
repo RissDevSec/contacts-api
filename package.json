@@ -17,7 +17,7 @@
     "migrate:generate": "prisma generate"
   },
   "keywords": [],
-  "author": "RissDevSec", 
+  "author": "RissDevSec",
   "license": "ISC",
   "dependencies": {
     "@prisma/client": "^6.19.3",
